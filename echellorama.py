@@ -27,89 +27,84 @@ class MyWindow(Gtk.Window):
 	def __init__(self):
 		Gtk.Window.__init__(self, title="Echelle Reduction GUI")
 
-	## setting up canvase for plotting ###
-		#self.box = Gtk.EventBox()
+		self.set_default_size(1000, 800)
+		self.figure = Figure(figsize=(5,7), dpi=100)
+		self.plot_1D = self.figure.add_subplot(212)
+		self.plot_2D = self.figure.add_subplot(232)
+		self.plot_PHD = self.figure.add_subplot(231)
+		self.plot_orders = self.figure.add_subplot(233)
+		self.plot_orders.tick_params(axis='both', labelsize=6)
+		self.plot_orders.set_title("Orders")
+		self.plot_2D.tick_params(axis='both', labelsize=7)
+		self.plot_2D.set_title("2D Raw Data")
+		self.plot_1D.set_title("1D Extracted Data")
+		self.plot_1D.set_xlabel('pixels')
+		self.plot_1D.set_ylabel('intensity')
+		self.plot_1D.tick_params(axis='both', labelsize=7)
+		self.plot_PHD.set_title('Pulse Height Data')
+		self.plot_PHD.tick_params(axis='both', labelsize=7)
 
-		self.set_default_size(1000, 700)
-		self.f = Figure(figsize=(5,7), dpi=100)
-		self.b = self.f.add_subplot(212) # 1D
-		self.c = self.f.add_subplot(231) # PHD
-		self.e = self.f.add_subplot(233) # orders
-		self.a = self.f.add_subplot(232) # raw
-		self.e.tick_params(axis='both', labelsize=6)
-		self.e.set_title("orders")
-		self.a.tick_params(axis='both', labelsize=7)
-		self.a.set_title("2D raw data")
-		self.b.set_title("1D extracted data")
-		self.b.set_xlabel('pixels')
-		self.b.set_ylabel('intensity')
-		self.b.tick_params(axis='both', labelsize=7)
-		self.c.set_title('PHD')
-		self.c.tick_params(axis='both', labelsize=7)
+		self.plot_1D_line, = self.plot_1D.plot([],[])
+		#~ self.plot_2D_line, = self.plot_2D.plot([],[])
+		#~ self.plot_PHD_line, = self.plot_PHD.plot([],[])
+		self.plot_orders_line, = self.plot_orders.plot([],[])
 
-		self.canvas = FigureCanvas(self.f)
+		self.canvas = FigureCanvas(self.figure)
 
-	# Menu bar
-		menubar = Gtk.MenuBar()
+		self.menubar = Gtk.MenuBar()
 
-		filem = Gtk.MenuItem("File")
-		filemenu = Gtk.Menu()
-		filem.set_submenu(filemenu)
+		self.menubar_file = Gtk.MenuItem("File")
+		self.filemenu = Gtk.Menu()
+		self.menubar_file.set_submenu(self.filemenu)
+		self.menubar.append(self.menubar_file)
 
-		open = Gtk.MenuItem("Open")
-		open.connect('activate', self.on_file_clicked)
-		filemenu.append(open)
-		menubar.append(filem)
-		#savesub = Gtk.Menu()
-		#savesub.append()
-		exit = Gtk.MenuItem('Exit')
-		exit.connect('activate', Gtk.main_quit)
-		filemenu.append(exit)
+		self.filemenu_open = Gtk.MenuItem("Open")
+		self.filemenu_open.connect('activate', self.open_file_dialog)
+		self.filemenu.append(self.filemenu_open)
 
-		menubox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-		menubox.pack_start(menubar, False, False, 0)
-		#open.connect("open", self.on_file_clicked)
+		self.filemenu_exit = Gtk.MenuItem('Exit')
+		self.filemenu_exit.connect('activate', Gtk.main_quit)
+		self.filemenu.append(self.filemenu_exit)
 
-	# Navigtion toolbar
-		toolbar = NavigationToolbar(self.canvas, self)
-		main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-		self.add(main_box)
+		self.menubox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+		self.menubox.pack_start(self.menubar, False, False, 0)
 
-	# Status bar
+		self.toolbar = NavigationToolbar(self.canvas, self)
+		self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+		self.add(self.main_box)
+
 		self.statusbar = Gtk.Statusbar()
-		context_id=self.statusbar.get_context_id("stat bar example")
-		self.statusbar.push(0,'Please Open 2D Fits Data File')
+		self.context_id = self.statusbar.get_context_id("stat bar example")
+		self.statusbar.push(0, 'Please Open 2D Fits Data File')
 
-	# Button box
-		vbutton_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-		self.button1 = Gtk.ToggleButton(label='Raw count rate')
-		self.button1.connect("toggled", self.on_button1_clicked, context_id)
-		self.button2 = Gtk.Button('Filter PHD')
-		self.button2.connect("clicked", self.on_button2_clicked, context_id)
-		self.button3 = Gtk.ToggleButton(label='Fit 1D Gauss')
-		self.button3.set_active(False)
-		self.button3.connect("toggled", self.on_button3_clicked, context_id)
-		self.orderbutton = Gtk.ToggleButton(label='Remove Orders')
-		self.orderbutton.connect("toggled", self.orderbutton_clicked, context_id)
+		self.hbutton_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+		self.count_rate_button = Gtk.ToggleButton(label='Raw count rate')
+		self.count_rate_button.connect("toggled", self.on_count_rate_button_clicked, self.context_id)
+		self.filter_phd_button = Gtk.Button('Filter PHD')
+		self.filter_phd_button.connect("clicked", self.on_filter_phd_button_clicked, self.context_id)
+		self.gauss_fit_button = Gtk.ToggleButton(label='Fit 1D Gauss')
+		self.gauss_fit_button.set_active(False)
+		self.gauss_fit_button.connect("toggled", self.on_gauss_fit_button_clicked, self.context_id)
+		self.remove_orders_button = Gtk.ToggleButton(label='Remove Orders')
+		self.remove_orders_button.connect("toggled", self.on_remove_orders_button_clicked, self.context_id)
 		self.buttonbg = Gtk.Button('Airglow')
-		self.buttonbg.connect('clicked', self.buttonbg_clicked, context_id)
+		self.buttonbg.connect('clicked', self.buttonbg_clicked, self.context_id)
 
-		vbutton_box.pack_start(self.button1, True, True, 0)
-		vbutton_box.pack_start(self.button2, True, True, 0)
-		vbutton_box.pack_start(self.button3, True, True, 0)
-		vbutton_box.pack_start(self.orderbutton, True, True, 0)
-		vbutton_box.pack_start(self.buttonbg, True, True, 0)
+		self.hbutton_box.pack_start(self.count_rate_button, True, True, 0)
+		self.hbutton_box.pack_start(self.filter_phd_button, True, True, 0)
+		self.hbutton_box.pack_start(self.gauss_fit_button, True, True, 0)
+		self.hbutton_box.pack_start(self.remove_orders_button, True, True, 0)
+		self.hbutton_box.pack_start(self.buttonbg, True, True, 0)
 
-	# Packing in main_box
-		main_box.pack_start(self.statusbar, False, False, 0)
-		main_box.pack_start(self.canvas, True, True, 0)
-		main_box.pack_start(vbutton_box, False, False, 0)
-		main_box.pack_start(toolbar, False, False, 0)
-		main_box.pack_start(menubox, False, False, 0)
+		self.main_box.pack_start(self.menubox, False, False, 0)
+		self.main_box.pack_start(self.toolbar, False, False, 0)
+		self.main_box.pack_start(self.canvas, True, True, 0)
+		self.main_box.pack_start(self.hbutton_box, False, False, 0)
+		self.main_box.pack_start(self.statusbar, False, False, 0)
 
+		#~ self.open_file('./2014-03-05-230944.fits')
 
-### file selector window ###
-	def on_file_clicked(self, widget):
+	def open_file_dialog(self, widget):
 		dialog = Gtk.FileChooserDialog(
 			"Please Choose a File",
 			self,
@@ -128,85 +123,61 @@ class MyWindow(Gtk.Window):
 		response = dialog.run()
 
 		if response == Gtk.ResponseType.OK :
-			fname = dialog.get_filename()
-			global _File
-			_File = fname
-			#print "open file" + fname
-			self.statusbar.push(0, 'Opened File:' + fname)
+			self.filename = dialog.get_filename()
+			self.statusbar.push(0, 'Opened File:' + self.filename)
 			dialog.destroy()
-			self.open_file(_File)
+			self.open_file(self.filename)
 		elif response == Gtk.ResponseType.CANCEL:
 			dialog.destroy()
 
-	# opening fits file
-	def open_file(self,_File):
-		#this opens up the fits file
-		hdulist = fits.open(_File)
-		self.targname = hdulist[0].header['targname']
 
-		#this picks out the actual data from fits file, and turns it into numpy array
-		#self.scidata = hdulist['sci',2].data
-		self.scidata = hdulist['sci', 1].data
+	def open_file(self, filename):
+		"""
+		Opens FITS file and sends off the data to be updated
+		FITS format:
+		hdulist[0].data is a 2D array of photon counts per pixel
+		"""
+		hdulist = fits.open(filename)
+		#~ self.targname = hdulist[0].header['targname']
+		#~ self.scidata = hdulist['sci', 1].data
+		self.targname = 'test'
+		self.image = hdulist[0].data
+		self.photon_list = hdulist[1].data
 		hdulist.close()
 
-		scidata = self.scidata
-
-		targname = self.targname
-		self.science(scidata, targname)
+		self.science(self.image, self.photon_list)
 
 
-	def science(self,scidata,targname):
-		# sends 2d data to my gui plotting funtion
-		self.update_plot(scidata)
-		#self.scidata = scidata
+	def science(self, image, photon_list):
+		self.update_2D_plot(image)
 
 	### smashing 2D data into 1D to view orders as peaks ####
 	# filling in y with the sums of the rows of scidata
-		y = []
-		for i in range(0, len(scidata[0])):
-			t = np.sum(scidata[i,:])
-			y.append(t)
+		peaks = []
+		for i in range(0, len(image[0])):
+			# sums ith column
+			peaks.append(np.sum(image[i,:]))
 
-	# making an x axis with same dementions as y
-		x = np.linspace(0, len(scidata[0]), num = len(scidata[0]))
-		self.x = x
-
-	#reversing x for the sake of the visualization
-		xrev = x[::-1]
+	# making an x axis with same dimensions as y
+		x = np.linspace(0, len(peaks), num = len(peaks))
 
 	# the orders seem to blend around lyman alpha so i have to select
 	# the biggest chunk I could use to get a delta y between the
 	# orders. i wil have to make this selectable on the GUI some how
 		chunk = [0, 500]
-		minv = chunk[0]
-		maxv = chunk[1]
-
-	#drawing box around my chunk to check makesure I have a good portion
-	#plt.hself.lines(chunk,[-1000],[5000],color='r')
-		#plt.vself.lines([-1000,5000],minv,maxv,color='r')
-	#plt.show()
 
 	#cutting out the chunk of data that i selected
-		xchunk = x[max(x)-chunk[1]:max(x)]
-		index1 = int(max(x) - chunk[1])
-		index2 = int(max(x))
-		ychunk = y[index1:index2]
-	#reversing x for the sake of the plot
-		xrevchunk = xchunk[::-1]
+		self.xchunk = x[-chunk[1]:]
+		self.ychunk = peaks[-chunk[1]:]
 
-		#plt.figure(figsize=(7.5,8.4))
+	# using scipy.signal.find_peaks_cwt() to find centers of orders.
+	# this required scipy version .11.0 or greater
+		peak_index_list = signal.find_peaks_cwt(self.ychunk, np.arange(3, 15))
 
-	# using scipy.signal.find_peaks_cwt() to find centers of orders.  this required scipy version .11.0 or greater
-		peakind = signal.find_peaks_cwt(ychunk, np.arange(3, 15))
-
-	# plotting chunk of 1D data with self.lines through the centers of the orders to double check how the peak finder did
-
-		self.lines=xchunk[peakind]
-		revlines=self.lines[::-1]
-		lines = self.lines
-		self.xchunk = xchunk
-		self.ychunk = ychunk
-		self.update_ordersplot(ychunk, xchunk, self.lines)
+	# plotting chunk of 1D data with self.lines through the centers of the
+	# orders to double check how the peak finder did
+		self.lines = self.xchunk[peak_index_list]
+		self.update_orders_plot(self.ychunk, self.xchunk, self.lines)
 
 	### fake PDH stuff ### (fake data for now)
 		PHDfake = './chesstest.fits'
@@ -215,76 +186,74 @@ class MyWindow(Gtk.Window):
 		self.update_PHDplot(PHD)
 		hdu.close()
 
-		self.dragbox=[]
+		self.dragbox = []
 
 	### extraction of orders ###
 	# find w, the widths of the orders (difference between peaks)
-		w = []
-		for i in range(1, len(peakind)):
-			t = peakind[i] - peakind[i - 1]
-			w.append(t)
+		peak_widths = []
+		for i in range(1, len(peak_index_list)):
+			peak_widths.append(peak_index_list[i] - peak_index_list[i - 1])
 
-	# i have to add an extra w at the end of the array to make it the right size i (hopefully this is kosher)
-		maxw = max(w) - 4
-		w.append(maxw)
-		self.w = w
+	# i have to add an extra w at the end of the array to make it the right
+	# size i (hopefully this is kosher)
+		peak_widths.append(max(peak_widths) - 4)
 
-	### making arrays of 1s ans 0s and extracting the 1d orders by matrix multiplication
-	#def extraction(self, peakind,x,scidata):
+	# making arrays of 1s and 0s and extracting the
+	# 1d orders by matrix multiplication
+	#def extraction(self, peak_index_list, x, scidata):
 		zeros = np.zeros( (len(x), 1) )
-		index = range( 0, len(self.w) )
-		reindex = index[::-1]
+		#~ index = range( 0, len(self.w) )
+		#~ reindex = index[::-1]
 		global oneDorders
 		oneDorders = {}
-		for i in reindex:
+		for i in range(len(self.w), 0, -1):
 			zeros1 = np.copy(zeros)
-			zeros1[len(scidata[0])-(np.sum(w[(i):18])) : len(scidata[0]) - np.sum(w[(i+1):18])] = 1
-			twoD = scidata * zeros1
+			zeros1[len(x)-(np.sum(peak_widths[(i):18])) : len(x) - np.sum(peak_widths[(i+1):18])] = 1
+			twoD = image * zeros1
 
 			# making 2d orders in to 1d orders
 			Y = []
-			for j in range(0, len(scidata[0])):
+			for j in range(0, len(x)):
 				t = np.sum(twoD[:,j])
 				Y.append(t)
 			# placing 1d orders in dictionary called oneDorders
 			oneDorders[str(i)] = Y
 
-		# sending plotting info to update_1dplot for gui (for now using just on order until cross coralation is added to script
-		self.x = np.linspace(0, len(scidata[0]), num=len(scidata[0]))
+		# Send plotting info to update_1D_plot for GUI (for now using just one order until cross correlation is added to script)
+		#~ x = np.linspace(0, len(scidata[0]), num=len(scidata[0]))
 		self.odo = oneDorders['16']
-		odo = self.odo[:]
-		self.update_1dplot(odo, x)
+		self.update_1D_plot(self.odo, x)
 		self.save_pickle(oneDorders)
 
 
-	def update_plot(self, scidata):
-
-		#self.a.cla()
-		#cbar.self.a.cla()
-
-		self.plt= self.a.imshow(scidata, vmin=0, vmax=255, origin='lower')
-		cbar=self.f.colorbar(self.plt, shrink=0.84, pad=0.01)
+	def update_2D_plot(self, image):
+		self.plot_2D.imshow(image, vmin=0, vmax=255, origin='lower')
 		self.canvas.draw()
 
-	def update_ordersplot(self, ychunk, xchunk, lines):
-		## if you dont want to new airglow subtracted data to over plot but to replot, uncomment this next line
-		self.e.cla()
-		self.e.set_title("orders")
-		self.plt = self.e.plot(ychunk, xchunk)
-		self.e.hlines(lines, 0, 2000, color='purple', label='centers')
+	def update_orders_plot(self, ychunk, xchunk, lines):
+		self.plot_orders_line.set_xdata(ychunk)
+		self.plot_orders_line.set_ydata(xchunk)
+		self.plot_orders.hlines(lines, 0, 2000, color='purple', label='centers')
+		self.plot_orders.autoscale_view(False, True, True)
 		self.canvas.draw()
 
-	def update_1dplot(self, odo, x):
+	def update_1D_plot(self, odo, x):
 		## if you dont want to new airglow subtracted data to over plot but to replot, uncomment this next line
-		self.b.cla()
-		self.plt=self.b.plot(x, self.odo)
+		#~ self.plot_1D.cla()
+		#~ self.plot_1D.set_title("1D Extracted Data")
+		#~ self.plot_1D.set_xlabel('pixels')
+		#~ self.plot_1D.set_ylabel('intensity')
+		#~ self.plt = self.plot_1D.plot(x, self.odo)
+		self.plot_1D_line.set_xdata(x)
+		self.plot_1D_line.set_ydata(odo)
+		self.plot_1D.autoscale_view(True, True, True)
 		self.canvas.draw()
 
 	def update_PHDplot(self, PHD):
 		## if you dont want to new airglow subtracted data to over plot but to replot, uncomment this next line
-		self.c.cla()
-		self.c.set_title('PHD')
-		self.plt = self.c.hist(PHD, bins=80, histtype='stepfilled')
+		self.plot_PHD.cla()
+		self.plot_PHD.set_title('Pulse Height Data')
+		self.plot_PHD.hist(PHD, bins=80, histtype='stepfilled')
 		self.canvas.draw()
 
 
@@ -304,27 +273,27 @@ class MyWindow(Gtk.Window):
 		response = dialog.run()
 
 		if response == Gtk.ResponseType.OK:
-			fname = dialog.get_filename()
-			global _AirglowFile
-			_AirglowFile = fname
+			self.airglow_filename = dialog.get_filename()
+			#~ global _AirglowFile
+			#~ _AirglowFile = fname
 			#print "open file" + fname
 			#self.statusbar.push(0,'Opened File:' + fname)
 			dialog.destroy()
-			self.open_Airglowfile(_AirglowFile)
+			self.open_airglow_file(self.airglow_filename)
 		elif response == Gtk.ResponseType.CANCEL:
 			dialog.destroy()
 
 # opening a‏iglow fits file
-	def open_Airglowfile(self,_AirglowFile):
+	def open_airglow_file(self, airglow_filename):
 		#this opens up the fits file
-		hdulist = fits.open(_AirglowFile)
+		hdulist = fits.open(airglow_filename)
 
 	## this line will need to be used for real data
-		#self.targname = hdulist[0].header['targname']
+		targname = hdulist[0].header['targname']
 		#targname = self.targname
 
 	## but for now
-		targname = 'HD128627J'
+		#~ targname = 'HD128627J'
 
 	#  this picks out the actual data from fits file, and turns it into numpy array
 		self.glowdata = hdulist[0].data
@@ -334,12 +303,12 @@ class MyWindow(Gtk.Window):
 		self.science(scidata, targname)
 
 ## gauss fitting button
-	def on_button3_clicked(self, widget, data):
+	def on_gauss_fit_button_clicked(self, widget, data):
 
 		self.statusbar.push(data,'Ready to fit.  Click on both sides of the emission feature you wish to fit')
 		self.xdata = []
 		def onclick(event):
-			if self.button3.get_active():
+			if self.gauss_fit_button.get_active():
 				self.xdata.append(event.xdata)
 				self.statusbar.push(data, 'one more click...')
 				if len(self.xdata) == 2:
@@ -350,11 +319,11 @@ class MyWindow(Gtk.Window):
 
 		#  mouse click event on 1d
 		cid = self.canvas.mpl_connect('button_press_event', onclick)
-		if [self.button3.get_active()] == [False]:
+		if [self.gauss_fit_button.get_active()] == [False]:
 			self.statusbar.push(0, 'Opened File:' + File)
 
 
-### guass fitting ###
+### gauss fitting ###
 	def gauss_fit(self, xdata):
 
 		x = list(self.x)
@@ -384,7 +353,7 @@ class MyWindow(Gtk.Window):
 
 
 
-		# makeing a model gauss
+		# making a model gauss
 		def gauss(xgauss, MAX, mu, sigma):
 			return MAX * np.exp(-(xgauss - mu)**2 / (2.0 * sigma**2))
 
@@ -412,35 +381,33 @@ class MyWindow(Gtk.Window):
 
 
 	### count rate button
-	def on_button1_clicked(self, widget,data):
-		if self.button1.get_active():
+	def on_count_rate_button_clicked(self, widget, data):
+		if self.count_rate_button.get_active():
 		   self.statusbar.push(data,'Use zoom feature in navigation bar to select count rate region')
 		else:
-		   self.statusbar.push(0, 'Opened File:' + _File)
+		   self.statusbar.push(0, 'Opened File:' + self.filename)
 
-		def onclick2(event):
-			if self.button1.get_active():
-				self.dragbox = []
-				#print event.xdata, event.ydata
-				self.dragbox.append(event.xdata)
-				self.dragbox.append(event.ydata)
+		dragbox = []
 
-
-		def offclick2(event):
-			# print event.xdata, event.ydata
-			if self.button1.get_active():
-				self.dragbox.append(event.xdata)
-				self.dragbox.append(event.ydata)
-				dragbox = self.dragbox
-				self.cnt_rate(dragbox, data)
+		def onclick(event):
+			if self.count_rate_button.get_active():
+				dragbox.append(event.xdata)
+				dragbox.append(event.ydata)
 
 
-		cid2 = self.canvas.mpl_connect('button_press_event', onclick2)
-		cid3 = self.canvas.mpl_connect('button_release_event', offclick2)
+		def offclick(event):
+			if self.count_rate_button.get_active():
+				dragbox.append(event.xdata)
+				dragbox.append(event.ydata)
+				self.count_rate(dragbox, data)
+
+
+		self.canvas.mpl_connect('button_press_event', onclick)
+		self.canvas.mpl_connect('button_release_event', offclick)
 
 
 ### count rate #####
-	def cnt_rate(self, dragbox, data):
+	def count_rate(self, dragbox, data):
 		# fake exposure time in seconds
 		datafake = './chesstest.fits'
 		hdu = fits.open(datafake)
@@ -455,7 +422,7 @@ class MyWindow(Gtk.Window):
 		return cntrate
 
 #### phd filter button ##
-	def on_button2_clicked(self,widget,data):
+	def on_filter_phd_button_clicked(self, widget, data):
 		self.phd_window = Gtk.MessageDialog(image = None)
 		self.phd_window.set_size_request(500, 100)
 		self.phd_window.move(400, 300)
@@ -523,42 +490,50 @@ class MyWindow(Gtk.Window):
 		plt.show()
 
 ### mouse click on remove orders ###
-	def orderbutton_clicked(self, widget, data):
-		self.statusbar.push(data,'click on the order that you want to exclude.')
+	def on_remove_orders_button_clicked(self, widget, data):
+		self.statusbar.push(data, 'Click on the order to exclude.')
 
-		self.remove = []
-		lines = self.lines
+		# y data values of clicked locations (not pixels!)
+		#~ orders = []
+
 		def onclick_order(event):
-			if self.orderbutton.get_active():
-				self.remove.append(event.ydata)
-				remove = self.remove
-				self.remove_orders(remove, lines)
+			if self.remove_orders_button.get_active():
+				#~ orders.append(event.ydata)
+				#~ self.remove_orders(orders, self.lines)
+				self.remove_orders(event.ydata, self.lines)
 
-		cid4 = self.canvas.mpl_connect('button_press_event', onclick_order)
-		if [self.orderbutton.get_active()] == [False]:
-			self.statusbar.push(0, 'Opened File:' + _File)
+		self.canvas.mpl_connect('button_press_event', onclick_order)
+
+		if [self.remove_orders_button.get_active()] == [False]:
+			self.statusbar.push(0, 'Opened File:' + self.filename)
 
 ### removing orders
-	def remove_orders(self, remove, lines):
-		bad_orders = []
-		bad_orders_index = []
+	def remove_orders(self, ydata, lines):
+		#~ for order in orders:
+			#~ # Find closest order to clicked location
+			#~ bad = min(lines, key=lambda x:abs(x - order))
+			#~ bad_orders.append(bad)
+			#~ bad_orders_index.append(np.where(lines == bad))
 
-		for i in range(0, len(remove)):
-			bad = min(lines, key=lambda x:abs(x - remove[i]))
-			bad_orders.append(bad)
-			bad_orders_index.append(np.where(lines == bad))
+		order = min(lines, key=lambda x:abs(x - ydata))
+		#~ newlines = [line for line in lines if line == order]
+		#~ newlines = filter(lambda x:x == order, lines)
+		#~ print newlines
+		#~ self.update_orders_plot(self.ychunk, self.xchunk, newlines)
 
+		print 'Number of original orders', len(oneDorders)
 
-		newlines = filter(lambda lines: lines not in bad_orders, lines)
-		xchunk = self.xchunk
-		ychunk = self.ychunk
-		self.e.cla()
-		lines = newlines
-		self.update_ordersplot(ychunk, xchunk, lines)
+		for key, value in oneDorders.items():
+			#~ print value
+			if value == order:
+				del oneDorders[key]
 
-		#for key in oneDorders.keys(): print key
-		print 'number or original orders', len(oneDorders)
-		self.new_dictionary(bad_orders_index)
+		self.update_orders_plot(self.ychunk, self.xchunk, oneDorders['16'])
+
+		print 'Corrected number of orders', len(oneDorders)
+
+		self.save_pickle(oneDorders)
+		#~ self.new_dictionary(bad_orders_index)
 
 
 	def new_dictionary(self, bad_orders_index):
@@ -576,13 +551,13 @@ class MyWindow(Gtk.Window):
 				if k == maxint - 1:
 					oneDorders.pop(key)
 
-		print 'corrected number of orders', len(oneDorders)
+		print 'Corrected number of orders', len(oneDorders)
 
 		self.save_pickle(oneDorders)
 		#for key in oneDorders.keys(): print key
 
 
-	def save_pickle(self, ondDorders):
+	def save_pickle(self, oneDorders):
 		order_dict = oneDorders
 		now = datetime.datetime.now()
 		date = now.strftime("%m_%d_%Y")
