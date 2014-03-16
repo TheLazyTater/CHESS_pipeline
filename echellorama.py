@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 # coding: utf-8
 #
 #
@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.figure as fig
 import matplotlib.text as text
 from matplotlib.figure import Figure
+from matplotlib.colors import LogNorm
 from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as FigureCanvas
 from matplotlib.backends.backend_gtk3 import NavigationToolbar2GTK3 as NavigationToolbar
 from gi.repository import Gtk, GObject, Gdk
@@ -38,7 +39,7 @@ class MyWindow(Gtk.Window):
 		self.plot_2D.tick_params(axis='both', labelsize=7)
 		self.plot_2D.set_title("2D Raw Data")
 		self.plot_1D.set_title("1D Extracted Data")
-		self.plot_1D.set_xlabel('pixels')
+		self.plot_1D.set_xlabel('pixels (x256)')
 		self.plot_1D.set_ylabel('intensity')
 		self.plot_1D.tick_params(axis='both', labelsize=7)
 		self.plot_PHD.set_title('Pulse Height Data')
@@ -102,7 +103,7 @@ class MyWindow(Gtk.Window):
 		self.main_box.pack_start(self.hbutton_box, False, False, 0)
 		self.main_box.pack_start(self.statusbar, False, False, 0)
 
-		#~ self.open_file('./2014-03-05-230944.fits')
+		#~ self.open_file('./2014-03-14-185937.fits')
 
 	def open_file_dialog(self, widget):
 		dialog = Gtk.FileChooserDialog(
@@ -132,64 +133,41 @@ class MyWindow(Gtk.Window):
 
 
 	def open_file(self, filename):
-		"""
-		Opens FITS file and sends off the data to be updated
-		FITS format:
-		hdulist[0].data is a 2D array of photon counts per pixel
-		"""
 		hdulist = fits.open(filename)
-		#~ self.targname = hdulist[0].header['targname']
-		#~ self.scidata = hdulist['sci', 1].data
-		self.targname = 'test'
-		self.image = hdulist[0].data
 		self.photon_list = hdulist[1].data
 		hdulist.close()
 
-		self.science(self.image, self.photon_list)
+		self.science(self.photon_list)
 
 
-	def science(self, image, photon_list):
+	def science(self, photon_list):
+		image, xedges, yedges = np.histogram2d(photon_list['X'], photon_list['Y'], bins=2048, range=[[0,8192],[0,8192]])
 		self.update_2D_plot(image)
 
-	### smashing 2D data into 1D to view orders as peaks ####
-	# filling in y with the sums of the rows of scidata
+	# Collapse 2D data into 1D to view orders as peaks
 		peaks = []
 		for i in range(0, len(image[0])):
 			# sums ith column
 			peaks.append(np.sum(image[i,:]))
 
-	# making an x axis with same dimensions as y
+	# Make an x axis with same dimensions as y
 		x = np.linspace(0, len(peaks), num = len(peaks))
-
-	# the orders seem to blend around lyman alpha so i have to select
-	# the biggest chunk I could use to get a delta y between the
-	# orders. i wil have to make this selectable on the GUI some how
-		chunk = [0, 500]
-
-	#cutting out the chunk of data that i selected
-		self.xchunk = x[-chunk[1]:]
-		self.ychunk = peaks[-chunk[1]:]
 
 	# using scipy.signal.find_peaks_cwt() to find centers of orders.
 	# this required scipy version .11.0 or greater
-		peak_index_list = signal.find_peaks_cwt(self.ychunk, np.arange(3, 15))
-
-	# plotting chunk of 1D data with self.lines through the centers of the
+		peak_index_list = signal.find_peaks_cwt(peaks, np.arange(2, 15))
+		#~ print x[peak_index_list]
+	# Plot 1D data with lines through the centers of the
 	# orders to double check how the peak finder did
-		self.lines = self.xchunk[peak_index_list]
-		self.update_orders_plot(self.ychunk, self.xchunk, self.lines)
+		self.update_orders_plot(x, peaks, peak_index_list)
 
-	### fake PDH stuff ### (fake data for now)
-		PHDfake = './chesstest.fits'
-		hdu = fits.open(PHDfake)
-		PHD = hdu[1].data['PHD']
-		self.update_PHDplot(PHD)
-		hdu.close()
+	#
+		self.update_PHDplot(photon_list['PHD'])
 
 		self.dragbox = []
 
 	### extraction of orders ###
-	# find w, the widths of the orders (difference between peaks)
+	# find the widths of the orders (difference between peaks)
 		peak_widths = []
 		for i in range(1, len(peak_index_list)):
 			peak_widths.append(peak_index_list[i] - peak_index_list[i - 1])
@@ -198,62 +176,47 @@ class MyWindow(Gtk.Window):
 	# size i (hopefully this is kosher)
 		peak_widths.append(max(peak_widths) - 4)
 
-	# making arrays of 1s and 0s and extracting the
-	# 1d orders by matrix multiplication
-	#def extraction(self, peak_index_list, x, scidata):
-		zeros = np.zeros( (len(x), 1) )
-		#~ index = range( 0, len(self.w) )
-		#~ reindex = index[::-1]
-		global oneDorders
-		oneDorders = {}
-		for i in range(len(self.w), 0, -1):
-			zeros1 = np.copy(zeros)
-			zeros1[len(x)-(np.sum(peak_widths[(i):18])) : len(x) - np.sum(peak_widths[(i+1):18])] = 1
-			twoD = image * zeros1
 
-			# making 2d orders in to 1d orders
-			Y = []
-			for j in range(0, len(x)):
-				t = np.sum(twoD[:,j])
-				Y.append(t)
-			# placing 1d orders in dictionary called oneDorders
-			oneDorders[str(i)] = Y
+	#
+		fwhm = 0.65 # full width half max
+		spectrum = []
+		for i in range(len(peak_index_list)):
+			peak = peak_index_list[i]
+			width = int(peak_widths[i]*fwhm)
+			for j in range(0, width):
+				for k in range(0, len(image[peak-width/2+j]), 256):
+					spectrum.append(image[peak-width/2+j][k])
 
-		# Send plotting info to update_1D_plot for GUI (for now using just one order until cross correlation is added to script)
-		#~ x = np.linspace(0, len(scidata[0]), num=len(scidata[0]))
-		self.odo = oneDorders['16']
-		self.update_1D_plot(self.odo, x)
-		self.save_pickle(oneDorders)
+		self.update_1D_plot(spectrum)
 
 
 	def update_2D_plot(self, image):
-		self.plot_2D.imshow(image, vmin=0, vmax=255, origin='lower')
+		max = np.amax(image)/2
+		self.plot_2D.imshow(image, norm=LogNorm(vmin=0.01, vmax=max/2), origin='lower')
 		self.canvas.draw()
 
-	def update_orders_plot(self, ychunk, xchunk, lines):
-		self.plot_orders_line.set_xdata(ychunk)
-		self.plot_orders_line.set_ydata(xchunk)
-		self.plot_orders.hlines(lines, 0, 2000, color='purple', label='centers')
-		self.plot_orders.autoscale_view(False, True, True)
+	#18980/1208320
+	def update_orders_plot(self, x, y, peak_index_list):
+		self.plot_orders_line.set_xdata(y)
+		self.plot_orders_line.set_ydata(x)
+		self.plot_orders.hlines(x[peak_index_list], 0, max(y), color='purple', label='centers')
+		self.plot_orders.relim()
+		self.plot_orders.autoscale_view(True, True, True)
 		self.canvas.draw()
 
-	def update_1D_plot(self, odo, x):
-		## if you dont want to new airglow subtracted data to over plot but to replot, uncomment this next line
-		#~ self.plot_1D.cla()
-		#~ self.plot_1D.set_title("1D Extracted Data")
-		#~ self.plot_1D.set_xlabel('pixels')
-		#~ self.plot_1D.set_ylabel('intensity')
-		#~ self.plt = self.plot_1D.plot(x, self.odo)
-		self.plot_1D_line.set_xdata(x)
-		self.plot_1D_line.set_ydata(odo)
+
+	def update_1D_plot(self, spectrum):
+		self.plot_1D_line.set_xdata(np.arange(len(spectrum)))
+		self.plot_1D_line.set_ydata(spectrum)
+		self.plot_1D.relim()
 		self.plot_1D.autoscale_view(True, True, True)
 		self.canvas.draw()
 
+
 	def update_PHDplot(self, PHD):
-		## if you dont want to new airglow subtracted data to over plot but to replot, uncomment this next line
-		self.plot_PHD.cla()
-		self.plot_PHD.set_title('Pulse Height Data')
-		self.plot_PHD.hist(PHD, bins=80, histtype='stepfilled')
+		self.plot_PHD.hist(PHD, bins=256, range=[0,255], histtype='stepfilled')
+		self.plot_PHD.relim()
+		self.plot_PHD.autoscale_view(True, True, True)
 		self.canvas.draw()
 
 
@@ -432,7 +395,7 @@ class MyWindow(Gtk.Window):
 		self.phd_window.add(mainbox)
 		thebox = Gtk.HBox(False, 0)
 
-		label = Gtk.Label("Discard PHD between")
+		label = Gtk.Label("Keep PHD between")
 		label2 = Gtk.Label('and')
 
 		label.show()
@@ -466,7 +429,7 @@ class MyWindow(Gtk.Window):
 	def phd_entry_button(self, widget):
 		minphd = self.entry.get_text()
 		maxphd = self.entry2.get_text()
-		phdfilt = [minphd,maxphd]
+		phdfilt = [minphd, maxphd]
 		self.phd_window.destroy()
 		self.filter_phd(phdfilt)
 
@@ -491,7 +454,7 @@ class MyWindow(Gtk.Window):
 
 ### mouse click on remove orders ###
 	def on_remove_orders_button_clicked(self, widget, data):
-		self.statusbar.push(data, 'Click on the order to exclude.')
+		self.statusbar.push(data, 'Click on the order to remove.')
 
 		# y data values of clicked locations (not pixels!)
 		#~ orders = []
