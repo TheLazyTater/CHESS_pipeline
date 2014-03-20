@@ -45,11 +45,6 @@ class MyWindow(Gtk.Window):
 		self.plot_PHD.set_title('Pulse Height Data')
 		self.plot_PHD.tick_params(axis='both', labelsize=7)
 
-		#~ self.plot_1D_line, = self.plot_1D.plot([],[])
-		#~ self.plot_2D_line, = self.plot_2D.plot([],[])
-		#~ self.plot_PHD_line, = self.plot_PHD.plot([],[])
-		#~ self.plot_orders_line, = self.plot_orders.plot([],[])
-
 		self.canvas = FigureCanvas(self.figure)
 
 		self.menubar = Gtk.MenuBar()
@@ -149,41 +144,44 @@ class MyWindow(Gtk.Window):
 	# Collapse 2D data into 1D to view orders as peaks
 		peaks = []
 		for i in range(0, len(image[0])):
-			# sums ith column
+			# sums ith row
 			peaks.append(np.sum(image[i,:]))
 
-	# Make an x axis with same dimensions as y
-		x = np.linspace(0, len(peaks), num = len(peaks))
+	# Smooth peaks by convolving with a boxcar
+		boxcar = np.zeros(300)
+		boxcar[100:199] = 1.0
+		smooth = np.convolve(peaks, boxcar, mode='same')
+		peaks_smoothed = peaks / smooth
 
 	# using scipy.signal.find_peaks_cwt() to find centers of orders.
 	# this required scipy version .11.0 or greater
-		peak_index_list = signal.find_peaks_cwt(peaks, np.arange(2, 15))
+		orders = signal.find_peaks_cwt(peaks_smoothed, np.arange(2, 15))
 
 	# Plot 1D data with lines through the centers of the
 	# orders to double check how the peak finder did
-		self.update_orders_plot(x, peaks, peak_index_list)
+		self.update_orders_plot(peaks_smoothed, orders)
 
 	#
-		self.update_PHDplot(PHD, min_phd, max_phd)
+		self.update_PHD_plot(PHD, min_phd, max_phd)
 
 		self.dragbox = []
 
 	### extraction of orders ###
 	# find the widths of the orders (difference between peaks)
 		peak_widths = []
-		for i in range(1, len(peak_index_list)):
-			peak_widths.append(peak_index_list[i] - peak_index_list[i - 1])
+		for i in range(1, len(orders)):
+			peak_widths.append(orders[i] - orders[i - 1])
 
-	# i have to add an extra w at the end of the array to make it the right
-	# size i (hopefully this is kosher)
-		peak_widths.append(max(peak_widths) - 4)
+	# Double last entry to make peak_widths the right length
+		peak_widths.append(peak_widths[-1])
 
 
 	# Add up spectrum lines from 2D plot where y coord is an order +/-FWHM
+	# Remember, peak_widths[0] is orders[1]-orders[0].
 		fwhm = 0.65 # full width half max
 		spectrum = []
-		for i in range(len(peak_index_list)):
-			peak = peak_index_list[i]
+		for i in range(len(orders)):
+			peak = orders[i]
 			width = int(peak_widths[i]*fwhm)
 			for j in range(0, width):
 				for k in range(0, len(image[peak-width/2+j])):
@@ -203,17 +201,19 @@ class MyWindow(Gtk.Window):
 		self.canvas.draw()
 
 
-	def update_orders_plot(self, x, y, peak_index_list):
+	def update_orders_plot(self, peaks, orders):
 		self.plot_orders.cla()
 		self.plot_orders_line, = self.plot_orders.plot([],[])
 		self.plot_orders.tick_params(axis='both', labelsize=6)
 		self.plot_orders.set_title("Orders")
-		self.plot_orders_line.set_xdata(y)
-		self.plot_orders_line.set_ydata(x)
-		self.plot_orders.hlines(x[peak_index_list], 0, max(y), color='purple', label='centers')
+
+		self.plot_orders_line.set_xdata(peaks)
+		self.plot_orders_line.set_ydata(np.arange(len(peaks)))
+		self.plot_orders.hlines(orders, 0, max(peaks), color='purple', label='centers')
 		self.plot_orders.relim()
 		self.plot_orders.autoscale_view(True, True, True)
 		self.canvas.draw()
+
 
 	# Seems a max of 18980 x values are supported by Cairo.  Since
 	# we have more than the max we have to reduce the spectrum
@@ -233,7 +233,10 @@ class MyWindow(Gtk.Window):
 
 		#~ print len(spectrum), scale, len(spectrum[::scale])
 
-		self.plot_1D_line.set_xdata(np.arange(len(spectrum[::scale])))
+		# When we get wavelength calibration, change this line to
+		#~ x = np.linspace(minWL, maxWL, num = len(spectrum[::scale]))
+		x = np.arange(len(spectrum[::scale]))
+		self.plot_1D_line.set_xdata(x)
 		self.plot_1D_line.set_ydata(spectrum[::scale])
 		self.plot_1D.relim()
 		self.plot_1D.autoscale_view(True, True, True)
@@ -241,7 +244,7 @@ class MyWindow(Gtk.Window):
 		self.canvas.draw()
 
 
-	def update_PHDplot(self, PHD, min_phd, max_phd):
+	def update_PHD_plot(self, PHD, min_phd, max_phd):
 		self.plot_PHD.cla()
 		self.plot_PHD.set_title('Pulse Height Data')
 		self.plot_PHD.tick_params(axis='both', labelsize=7)
