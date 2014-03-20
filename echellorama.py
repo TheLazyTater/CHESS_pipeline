@@ -39,16 +39,16 @@ class MyWindow(Gtk.Window):
 		self.plot_2D.tick_params(axis='both', labelsize=7)
 		self.plot_2D.set_title("2D Raw Data")
 		self.plot_1D.set_title("1D Extracted Data")
-		self.plot_1D.set_xlabel('pixels (x256)')
+		self.plot_1D.set_xlabel('pixels')
 		self.plot_1D.set_ylabel('intensity')
 		self.plot_1D.tick_params(axis='both', labelsize=7)
 		self.plot_PHD.set_title('Pulse Height Data')
 		self.plot_PHD.tick_params(axis='both', labelsize=7)
 
-		self.plot_1D_line, = self.plot_1D.plot([],[])
+		#~ self.plot_1D_line, = self.plot_1D.plot([],[])
 		#~ self.plot_2D_line, = self.plot_2D.plot([],[])
 		#~ self.plot_PHD_line, = self.plot_PHD.plot([],[])
-		self.plot_orders_line, = self.plot_orders.plot([],[])
+		#~ self.plot_orders_line, = self.plot_orders.plot([],[])
 
 		self.canvas = FigureCanvas(self.figure)
 
@@ -125,7 +125,7 @@ class MyWindow(Gtk.Window):
 
 		if response == Gtk.ResponseType.OK :
 			self.filename = dialog.get_filename()
-			self.statusbar.push(0, 'Opened File:' + self.filename)
+			self.statusbar.push(0, 'Opened File: ' + self.filename)
 			dialog.destroy()
 			self.open_file(self.filename)
 		elif response == Gtk.ResponseType.CANCEL:
@@ -140,8 +140,10 @@ class MyWindow(Gtk.Window):
 		self.science(self.photon_list)
 
 
-	def science(self, photon_list):
-		image, xedges, yedges = np.histogram2d(photon_list['X'], photon_list['Y'], bins=2048, range=[[0,8192],[0,8192]])
+	def science(self, photon_list, min_phd=0, max_phd=255):
+		PHD = np.array(photon_list['PHD'])
+		photon_list_filtered = photon_list[(PHD >= min_phd) & (PHD <= max_phd)]
+		image, xedges, yedges = np.histogram2d(photon_list_filtered['X'], photon_list_filtered['Y'], bins=2048, range=[[0,8192],[0,8192]])
 		self.update_2D_plot(image)
 
 	# Collapse 2D data into 1D to view orders as peaks
@@ -156,13 +158,13 @@ class MyWindow(Gtk.Window):
 	# using scipy.signal.find_peaks_cwt() to find centers of orders.
 	# this required scipy version .11.0 or greater
 		peak_index_list = signal.find_peaks_cwt(peaks, np.arange(2, 15))
-		#~ print x[peak_index_list]
+
 	# Plot 1D data with lines through the centers of the
 	# orders to double check how the peak finder did
 		self.update_orders_plot(x, peaks, peak_index_list)
 
 	#
-		self.update_PHDplot(photon_list['PHD'])
+		self.update_PHDplot(PHD, min_phd, max_phd)
 
 		self.dragbox = []
 
@@ -177,26 +179,35 @@ class MyWindow(Gtk.Window):
 		peak_widths.append(max(peak_widths) - 4)
 
 
-	#
+	# Add up spectrum lines from 2D plot where y coord is an order +/-FWHM
 		fwhm = 0.65 # full width half max
 		spectrum = []
 		for i in range(len(peak_index_list)):
 			peak = peak_index_list[i]
 			width = int(peak_widths[i]*fwhm)
 			for j in range(0, width):
-				for k in range(0, len(image[peak-width/2+j]), 256):
+				for k in range(0, len(image[peak-width/2+j])):
 					spectrum.append(image[peak-width/2+j][k])
 
 		self.update_1D_plot(spectrum)
 
+		self.statusbar.push(0, 'Done! ' + self.filename)
+
 
 	def update_2D_plot(self, image):
+		self.plot_2D.cla()
+		self.plot_2D.tick_params(axis='both', labelsize=7)
+		self.plot_2D.set_title("2D Raw Data")
 		max = np.amax(image)/2
-		self.plot_2D.imshow(image, norm=LogNorm(vmin=0.01, vmax=max/2), origin='lower')
+		self.plot_2D.imshow(image, norm=LogNorm(vmin=1, vmax=max/2), origin='lower')
 		self.canvas.draw()
 
-	#18980/1208320
+
 	def update_orders_plot(self, x, y, peak_index_list):
+		self.plot_orders.cla()
+		self.plot_orders_line, = self.plot_orders.plot([],[])
+		self.plot_orders.tick_params(axis='both', labelsize=6)
+		self.plot_orders.set_title("Orders")
 		self.plot_orders_line.set_xdata(y)
 		self.plot_orders_line.set_ydata(x)
 		self.plot_orders.hlines(x[peak_index_list], 0, max(y), color='purple', label='centers')
@@ -204,16 +215,38 @@ class MyWindow(Gtk.Window):
 		self.plot_orders.autoscale_view(True, True, True)
 		self.canvas.draw()
 
-
+	# Seems a max of 18980 x values are supported by Cairo.  Since
+	# we have more than the max we have to reduce the spectrum
+	# resolution to fit.
+	# Maybe do this dynamically based on xlim()?
+	# xmin, xmax = xlim()   # return the current xlim
 	def update_1D_plot(self, spectrum):
-		self.plot_1D_line.set_xdata(np.arange(len(spectrum)))
-		self.plot_1D_line.set_ydata(spectrum)
+		self.plot_1D.cla()
+		self.plot_1D_line, = self.plot_1D.plot([],[])
+		self.plot_1D.set_title("1D Extracted Data")
+		self.plot_1D.set_xlabel('pixels')
+		self.plot_1D.set_ylabel('intensity')
+		self.plot_1D.tick_params(axis='both', labelsize=7)
+
+		MAX = 18980
+		scale = int(len(spectrum)/MAX) + 1
+
+		#~ print len(spectrum), scale, len(spectrum[::scale])
+
+		self.plot_1D_line.set_xdata(np.arange(len(spectrum[::scale])))
+		self.plot_1D_line.set_ydata(spectrum[::scale])
 		self.plot_1D.relim()
 		self.plot_1D.autoscale_view(True, True, True)
+		self.plot_1D.set_xlabel('pixels (x' + str(scale) + ')')
 		self.canvas.draw()
 
 
-	def update_PHDplot(self, PHD):
+	def update_PHDplot(self, PHD, min_phd, max_phd):
+		self.plot_PHD.cla()
+		self.plot_PHD.set_title('Pulse Height Data')
+		self.plot_PHD.tick_params(axis='both', labelsize=7)
+		self.plot_PHD.axvline(x=min_phd, color='purple')
+		self.plot_PHD.axvline(x=max_phd, color='purple')
 		self.plot_PHD.hist(PHD, bins=256, range=[0,255], histtype='stepfilled')
 		self.plot_PHD.relim()
 		self.plot_PHD.autoscale_view(True, True, True)
@@ -369,7 +402,6 @@ class MyWindow(Gtk.Window):
 		self.canvas.mpl_connect('button_release_event', offclick)
 
 
-### count rate #####
 	def count_rate(self, dragbox, data):
 		# fake exposure time in seconds
 		datafake = './chesstest.fits'
@@ -384,15 +416,15 @@ class MyWindow(Gtk.Window):
 		self.statusbar.push(data, 'count rate in box = ' + cntrate + ' cnt/sec,    pixels in box = ' + totpix + '')
 		return cntrate
 
-#### phd filter button ##
+
 	def on_filter_phd_button_clicked(self, widget, data):
 		self.phd_window = Gtk.MessageDialog(image = None)
 		self.phd_window.set_size_request(500, 100)
 		self.phd_window.move(400, 300)
 		#self.phd_window.connect("delet_event",lambda w,e:)
+		#~ self.phd_window.connect("delete-event", self.phd_window.destroy)
 
 		mainbox = self.phd_window.get_content_area()
-		self.phd_window.add(mainbox)
 		thebox = Gtk.HBox(False, 0)
 
 		label = Gtk.Label("Keep PHD between")
@@ -401,56 +433,53 @@ class MyWindow(Gtk.Window):
 		label.show()
 		label2.show()
 
-		self.okbutton = Gtk.Button('Okay')
-		self.okbutton.connect('clicked', self.phd_entry_button)
+		self.ok_button = Gtk.Button('Okay')
+		self.ok_button.connect('clicked', self.phd_entry_button_clicked)
+		self.min_phd_entry = Gtk.Entry()
+		self.min_phd_entry.set_activates_default(True)
+		self.max_phd_entry = Gtk.Entry()
+		self.max_phd_entry.set_activates_default(True)
 
-		self.entry = Gtk.Entry()
-		self.entry.set_activates_default(True)
-
-		self.entry2 = Gtk.Entry()
-		self.entry2.set_activates_default(True)
-		self.entry.show()
-		self.entry2.show()
-		self.okbutton.show()
+		self.min_phd_entry.show()
+		self.max_phd_entry.show()
+		self.ok_button.show()
 
 		thebox.pack_start(label,False,False,0)
-		thebox.pack_start(self.entry,False,False,0)
+		thebox.pack_start(self.min_phd_entry,False,False,0)
 
 		thebox.pack_start(label2,False,False,0)
-		thebox.pack_start(self.entry2,False,False,0)
+		thebox.pack_start(self.max_phd_entry,False,False,0)
 		mainbox.pack_start(thebox,True,True,0)
-		mainbox.pack_start(self.okbutton,True,False,0)
-
+		mainbox.pack_start(self.ok_button,True,False,0)
 
 		mainbox.show()
 		thebox.show()
 		self.phd_window.show()
 
-	def phd_entry_button(self, widget):
-		minphd = self.entry.get_text()
-		maxphd = self.entry2.get_text()
-		phdfilt = [minphd, maxphd]
+	def phd_entry_button_clicked(self, widget):
+		min_phd = int(self.min_phd_entry.get_text())
+		max_phd = int(self.max_phd_entry.get_text())
 		self.phd_window.destroy()
-		self.filter_phd(phdfilt)
+		#~ self.filter_phd(min_phd, max_phd)
+		self.statusbar.push(0, 'Filtering by: ' + str(min_phd) + ' < PHD < ' + str(max_phd))
+		self.science(self.photon_list, min_phd, max_phd)
 
 ### phd filter function ##
-	def filter_phd(self, phdfilt):
-		phdfilt = [int(x) for x in phdfilt]
+	#~ def filter_phd(self, min_phd, max_phd):
+		#~ fakedata = './chesstest.fits'
+		#~ hdu = fits.open(fakedata)
+		#~ PHD = hdu[1].data['PHD']
+		#~ PHD = np.array(PHD)
+		#~ data  = hdu[1].data
+		#~ newdata = data[(PHD > min_phd) & (PHD < max_phd)]
 
-		fakedata = './chesstest.fits'
-		hdu = fits.open(fakedata)
-		PHD = hdu[1].data['PHD']
-		PHD = np.array(PHD)
-		data  = hdu[1].data
-		newdata = data[(PHD > phdfilt[0]) & (PHD < phdfilt[1])]
+		#~ plt.subplot(221)
+		#~ oldplot = plt.plot(data['X'], data['Y'], linestyle='', marker='.')
 
-		plt.subplot(221)
-		oldplot = plt.plot(data['X'], data['Y'], linestyle='', marker='.')
+		#~ plt.subplot(222)
+		#~ newplot = plt.plot(newdata['X'], newdata['Y'], linestyle='', marker='.')
 
-		plt.subplot(222)
-		newplot = plt.plot(newdata['X'], newdata['Y'], linestyle='', marker='.')
-
-		plt.show()
+		#~ plt.show()
 
 ### mouse click on remove orders ###
 	def on_remove_orders_button_clicked(self, widget, data):
