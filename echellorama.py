@@ -178,13 +178,18 @@ class MyWindow(Gtk.Window):
 
 	# Add up spectrum lines from 2D plot where y coord is an order +/-FWHM
 	# Remember, peak_widths[0] is orders[1]-orders[0].
-		fwhm = 0.65 # full width half max
+		FWHM = 0.63 # full width half max
 		spectrum = []
 		for i in range(len(orders)):
-			peak = orders[i]
-			width = int(peak_widths[i]*fwhm)
+			peak = int(orders[i])
+			#~ width = int(peak_widths[i]*FWHM)
+			width = 1
 			for j in range(0, width):
-				for k in range(0, len(image[peak-width/2+j])):
+				# Find chord length of circular image
+				r = len(image[0])/2
+				start = int(r - (peak * (2*r - peak))**0.5)
+				end = int(2 * r - start)
+				for k in range(start, end):
 					spectrum.append(image[peak-width/2+j][k])
 
 		self.update_1D_plot(spectrum)
@@ -228,19 +233,21 @@ class MyWindow(Gtk.Window):
 		self.plot_1D.set_ylabel('intensity')
 		self.plot_1D.tick_params(axis='both', labelsize=7)
 
-		MAX = 18980
+		MAX = 18980 #16384 # 2^14
 		scale = int(len(spectrum)/MAX) + 1
 
-		#~ print len(spectrum), scale, len(spectrum[::scale])
+		print len(spectrum), scale, len(spectrum)/scale
 
 		# When we get wavelength calibration, change this line to
-		#~ x = np.linspace(minWL, maxWL, num = len(spectrum[::scale]))
-		x = np.arange(len(spectrum[::scale]))
+		#~ x = np.linspace(minWL, maxWL, num = len(spectrum)/scale)
+		x = np.arange(0, len(spectrum), scale)
+		spectrum = [np.sum(spectrum[i:i+scale]) for i in x]
+
 		self.plot_1D_line.set_xdata(x)
-		self.plot_1D_line.set_ydata(spectrum[::scale])
+		self.plot_1D_line.set_ydata(spectrum)
 		self.plot_1D.relim()
 		self.plot_1D.autoscale_view(True, True, True)
-		self.plot_1D.set_xlabel('pixels (x' + str(scale) + ')')
+		self.plot_1D.set_xlabel('pixels')# (x' + str(scale) + ')')
 		self.canvas.draw()
 
 
@@ -463,26 +470,9 @@ class MyWindow(Gtk.Window):
 		min_phd = int(self.min_phd_entry.get_text())
 		max_phd = int(self.max_phd_entry.get_text())
 		self.phd_window.destroy()
-		#~ self.filter_phd(min_phd, max_phd)
 		self.statusbar.push(0, 'Filtering by: ' + str(min_phd) + ' < PHD < ' + str(max_phd))
 		self.science(self.photon_list, min_phd, max_phd)
 
-### phd filter function ##
-	#~ def filter_phd(self, min_phd, max_phd):
-		#~ fakedata = './chesstest.fits'
-		#~ hdu = fits.open(fakedata)
-		#~ PHD = hdu[1].data['PHD']
-		#~ PHD = np.array(PHD)
-		#~ data  = hdu[1].data
-		#~ newdata = data[(PHD > min_phd) & (PHD < max_phd)]
-
-		#~ plt.subplot(221)
-		#~ oldplot = plt.plot(data['X'], data['Y'], linestyle='', marker='.')
-
-		#~ plt.subplot(222)
-		#~ newplot = plt.plot(newdata['X'], newdata['Y'], linestyle='', marker='.')
-
-		#~ plt.show()
 
 ### mouse click on remove orders ###
 	def on_remove_orders_button_clicked(self, widget, data):
