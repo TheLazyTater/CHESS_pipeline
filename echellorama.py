@@ -83,6 +83,8 @@ class MyWindow(Gtk.Window):
 		self.gauss_fit_button.connect("toggled", self.on_gauss_fit_button_clicked, self.context_id)
 		self.remove_orders_button = Gtk.ToggleButton(label='Remove Orders')
 		self.remove_orders_button.connect("toggled", self.on_remove_orders_button_clicked, self.context_id)
+		self.add_orders_button = Gtk.ToggleButton(label='Add Orders')
+		self.add_orders_button.connect("toggled", self.on_add_orders_button_clicked, self.context_id)
 		self.buttonbg = Gtk.Button('Airglow')
 		self.buttonbg.connect('clicked', self.buttonbg_clicked, self.context_id)
 
@@ -90,6 +92,7 @@ class MyWindow(Gtk.Window):
 		self.hbutton_box.pack_start(self.filter_phd_button, True, True, 0)
 		self.hbutton_box.pack_start(self.gauss_fit_button, True, True, 0)
 		self.hbutton_box.pack_start(self.remove_orders_button, True, True, 0)
+		self.hbutton_box.pack_start(self.add_orders_button, True, True, 0)
 		self.hbutton_box.pack_start(self.buttonbg, True, True, 0)
 
 		self.main_box.pack_start(self.menubox, False, False, 0)
@@ -98,7 +101,8 @@ class MyWindow(Gtk.Window):
 		self.main_box.pack_start(self.hbutton_box, False, False, 0)
 		self.main_box.pack_start(self.statusbar, False, False, 0)
 
-		#~ self.open_file('./2014-03-14-185937.fits')
+		#~ self.filename = './2014-03-14-185937.fits'
+		#~ self.open_file(self.filename)
 
 	def open_file_dialog(self, widget):
 		dialog = Gtk.FileChooserDialog(
@@ -151,15 +155,15 @@ class MyWindow(Gtk.Window):
 		boxcar = np.zeros(300)
 		boxcar[100:199] = 1.0
 		smooth = np.convolve(peaks, boxcar, mode='same')
-		peaks_smoothed = peaks / smooth
+		self.peaks_smoothed = peaks / smooth
 
 	# using scipy.signal.find_peaks_cwt() to find centers of orders.
 	# this required scipy version .11.0 or greater
-		orders = signal.find_peaks_cwt(peaks_smoothed, np.arange(2, 15))
+		self.orders = signal.find_peaks_cwt(self.peaks_smoothed, np.arange(2, 15))
 
 	# Plot 1D data with lines through the centers of the
 	# orders to double check how the peak finder did
-		self.update_orders_plot(peaks_smoothed, orders)
+		self.update_orders_plot(self.peaks_smoothed, self.orders)
 
 	#
 		self.update_PHD_plot(PHD, min_phd, max_phd)
@@ -169,8 +173,8 @@ class MyWindow(Gtk.Window):
 	### extraction of orders ###
 	# find the widths of the orders (difference between peaks)
 		peak_widths = []
-		for i in range(1, len(orders)):
-			peak_widths.append(orders[i] - orders[i - 1])
+		for i in range(1, len(self.orders)):
+			peak_widths.append(self.orders[i] - self.orders[i - 1])
 
 	# Double last entry to make peak_widths the right length
 		peak_widths.append(peak_widths[-1])
@@ -180,8 +184,8 @@ class MyWindow(Gtk.Window):
 	# Remember, peak_widths[0] is orders[1]-orders[0].
 		FWHM = 0.63 # full width half max
 		spectrum = []
-		for i in range(len(orders)):
-			peak = int(orders[i])
+		for i in range(len(self.orders)):
+			peak = int(self.orders[i])
 			#~ width = int(peak_widths[i]*FWHM)
 			width = 1
 			for j in range(0, width):
@@ -474,80 +478,59 @@ class MyWindow(Gtk.Window):
 		self.science(self.photon_list, min_phd, max_phd)
 
 
-### mouse click on remove orders ###
-	def on_remove_orders_button_clicked(self, widget, data):
-		self.statusbar.push(data, 'Click on the order to remove.')
+	def on_add_orders_button_clicked(self, widget, data):
+		if [self.add_orders_button.get_active()] == [True]:
+			self.statusbar.push(data, 'Click where to add an order.')
 
-		# y data values of clicked locations (not pixels!)
-		#~ orders = []
+			def onclick_peak(event):
+				if self.add_orders_button.get_active():
+					self.add_order(event.ydata)
 
-		def onclick_order(event):
-			if self.remove_orders_button.get_active():
-				#~ orders.append(event.ydata)
-				#~ self.remove_orders(orders, self.lines)
-				self.remove_orders(event.ydata, self.lines)
+			self.cid_add = self.canvas.mpl_connect('button_press_event', onclick_peak)
 
-		self.canvas.mpl_connect('button_press_event', onclick_order)
-
-		if [self.remove_orders_button.get_active()] == [False]:
+		else:
+			self.canvas.mpl_disconnect(self.cid_add)
+			del self.cid_add
 			self.statusbar.push(0, 'Opened File:' + self.filename)
 
-### removing orders
-	def remove_orders(self, ydata, lines):
-		#~ for order in orders:
-			#~ # Find closest order to clicked location
-			#~ bad = min(lines, key=lambda x:abs(x - order))
-			#~ bad_orders.append(bad)
-			#~ bad_orders_index.append(np.where(lines == bad))
+	def add_order(self, ydata):
+		order = ydata
 
-		order = min(lines, key=lambda x:abs(x - ydata))
-		#~ newlines = [line for line in lines if line == order]
-		#~ newlines = filter(lambda x:x == order, lines)
-		#~ print newlines
-		#~ self.update_orders_plot(self.ychunk, self.xchunk, newlines)
+		print 'Number of original orders', len(self.orders)
 
-		print 'Number of original orders', len(oneDorders)
+		self.orders.insert(0, order)
+		#~ self.orders.sort() # Don't need to sort yet
+		self.update_orders_plot(self.peaks_smoothed, self.orders)
 
-		for key, value in oneDorders.items():
-			#~ print value
-			if value == order:
-				del oneDorders[key]
-
-		self.update_orders_plot(self.ychunk, self.xchunk, oneDorders['16'])
-
-		print 'Corrected number of orders', len(oneDorders)
-
-		self.save_pickle(oneDorders)
-		#~ self.new_dictionary(bad_orders_index)
+		print 'Corrected number of orders', len(self.orders)
 
 
-	def new_dictionary(self, bad_orders_index):
+	def on_remove_orders_button_clicked(self, widget, data):
+		if [self.remove_orders_button.get_active()] == [True]:
+			self.statusbar.push(data, 'Click on the order to remove.')
 
-		maxint = len(oneDorders)
-		for i in range(0, len(bad_orders_index)):
-			num = int(bad_orders_index[i][0])
+			def onclick_order(event):
+				if self.remove_orders_button.get_active():
+					self.remove_order(event.ydata)
 
-			if oneDorders.get(str(num), None):
-				oneDorders.pop(str(num))
-			for key in oneDorders.keys():
-				k = int(key)
-				if k > num:
-					oneDorders[str(k - 1)] = oneDorders.get(key)
-				if k == maxint - 1:
-					oneDorders.pop(key)
+			self.cid_remove = self.canvas.mpl_connect('button_press_event', onclick_order)
 
-		print 'Corrected number of orders', len(oneDorders)
-
-		self.save_pickle(oneDorders)
-		#for key in oneDorders.keys(): print key
+		else:
+			self.canvas.mpl_disconnect(self.cid_remove)
+			del self.cid_remove
+			self.statusbar.push(0, 'Opened File:' + self.filename)
 
 
-	def save_pickle(self, oneDorders):
-		order_dict = oneDorders
-		now = datetime.datetime.now()
-		date = now.strftime("%m_%d_%Y")
-		targname = str(self.targname)
-		pickle.dump(order_dict, open('' + targname + '_1D_' + date + '.p', 'wb'))
+	def remove_order(self, ydata):
+		order = min(self.orders, key=lambda x:abs(x - ydata))
+
+		print 'Number of original orders', len(self.orders)
+
+		self.orders.remove(order)
+		self.update_orders_plot(self.peaks_smoothed, self.orders)
+
+		print 'Corrected number of orders', len(self.orders)
+
 
 if __name__ == '__main__':
 	win = MyWindow()
