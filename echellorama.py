@@ -7,6 +7,7 @@
 import sys
 import math
 import pickle
+import time
 import datetime
 import numpy as np
 from scipy import signal
@@ -22,9 +23,18 @@ from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as Figur
 from matplotlib.backends.backend_gtk3 import NavigationToolbar2GTK3 as NavigationToolbar
 from gi.repository import Gtk, GObject, Gdk
 
+def timing(f):
+    def wrap(*args):
+        time1 = time.time()
+        ret = f(*args)
+        time2 = time.time()
+        print '%s function took %0.3f ms' % (f.func_name, (time2-time1)*1000.0)
+        return ret
+    return wrap
 
 class MyWindow(Gtk.Window):
 
+	@timing
 	def __init__(self):
 		Gtk.Window.__init__(self, title="Echelle Reduction GUI")
 
@@ -47,33 +57,45 @@ class MyWindow(Gtk.Window):
 
 		self.canvas = FigureCanvas(self.figure)
 
-		self.menubar = Gtk.MenuBar()
+		menubar = Gtk.MenuBar()
 
-		self.menubar_file = Gtk.MenuItem("File")
-		self.filemenu = Gtk.Menu()
-		self.menubar_file.set_submenu(self.filemenu)
-		self.menubar.append(self.menubar_file)
+		menubar_file = Gtk.MenuItem("File")
+		filemenu = Gtk.Menu()
+		menubar_file.set_submenu(filemenu)
+		menubar.append(menubar_file)
 
-		self.filemenu_open = Gtk.MenuItem("Open")
-		self.filemenu_open.connect('activate', self.open_file_dialog)
-		self.filemenu.append(self.filemenu_open)
+		filemenu_open = Gtk.MenuItem("Open")
+		filemenu_open.connect('activate', self.open_file_dialog)
+		filemenu.append(filemenu_open)
 
-		self.filemenu_exit = Gtk.MenuItem('Exit')
-		self.filemenu_exit.connect('activate', Gtk.main_quit)
-		self.filemenu.append(self.filemenu_exit)
+		filemenu.append(Gtk.SeparatorMenuItem())
 
-		self.menubox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-		self.menubox.pack_start(self.menubar, False, False, 0)
+		filemenu_save = Gtk.MenuItem("Save Orders")
+		filemenu_save.connect('activate', self.on_filemenu_save_clicked)
+		filemenu.append(filemenu_save)
 
-		self.toolbar = NavigationToolbar(self.canvas, self)
-		self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-		self.add(self.main_box)
+		filemenu_load = Gtk.MenuItem("Load Orders")
+		filemenu_load.connect('activate', self.on_filemenu_load_clicked)
+		filemenu.append(filemenu_load)
+
+		filemenu.append(Gtk.SeparatorMenuItem())
+
+		filemenu_exit = Gtk.MenuItem('Exit')
+		filemenu_exit.connect('activate', Gtk.main_quit)
+		filemenu.append(filemenu_exit)
+
+		menubox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+		menubox.pack_start(menubar, False, False, 0)
+
+		toolbar = NavigationToolbar(self.canvas, self)
+		main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+		self.add(main_box)
 
 		self.statusbar = Gtk.Statusbar()
 		self.context_id = self.statusbar.get_context_id("stat bar example")
 		self.statusbar.push(0, 'Please Open 2D Fits Data File')
 
-		self.hbutton_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+		hbutton_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
 		self.count_rate_button = Gtk.ToggleButton(label='Raw count rate')
 		self.count_rate_button.connect("toggled", self.on_count_rate_button_clicked, self.context_id)
 		self.filter_phd_button = Gtk.Button('Filter PHD')
@@ -87,23 +109,27 @@ class MyWindow(Gtk.Window):
 		self.add_orders_button.connect("toggled", self.on_add_orders_button_clicked, self.context_id)
 		self.buttonbg = Gtk.Button('Airglow')
 		self.buttonbg.connect('clicked', self.buttonbg_clicked, self.context_id)
+		self.recalculate_button = Gtk.Button('Recalculate')
+		self.recalculate_button.connect('clicked', self.on_recalculate_button_clicked, self.context_id)
 
-		self.hbutton_box.pack_start(self.count_rate_button, True, True, 0)
-		self.hbutton_box.pack_start(self.filter_phd_button, True, True, 0)
-		self.hbutton_box.pack_start(self.gauss_fit_button, True, True, 0)
-		self.hbutton_box.pack_start(self.remove_orders_button, True, True, 0)
-		self.hbutton_box.pack_start(self.add_orders_button, True, True, 0)
-		self.hbutton_box.pack_start(self.buttonbg, True, True, 0)
+		hbutton_box.pack_start(self.count_rate_button, True, True, 0)
+		hbutton_box.pack_start(self.filter_phd_button, True, True, 0)
+		hbutton_box.pack_start(self.gauss_fit_button, True, True, 0)
+		hbutton_box.pack_start(self.remove_orders_button, True, True, 0)
+		hbutton_box.pack_start(self.add_orders_button, True, True, 0)
+		hbutton_box.pack_start(self.buttonbg, True, True, 0)
+		hbutton_box.pack_start(self.recalculate_button, True, True, 0)
 
-		self.main_box.pack_start(self.menubox, False, False, 0)
-		self.main_box.pack_start(self.toolbar, False, False, 0)
-		self.main_box.pack_start(self.canvas, True, True, 0)
-		self.main_box.pack_start(self.hbutton_box, False, False, 0)
-		self.main_box.pack_start(self.statusbar, False, False, 0)
+		main_box.pack_start(menubox, False, False, 0)
+		main_box.pack_start(toolbar, False, False, 0)
+		main_box.pack_start(self.canvas, True, True, 0)
+		main_box.pack_start(hbutton_box, False, False, 0)
+		main_box.pack_start(self.statusbar, False, False, 0)
 
 		#~ self.filename = './2014-03-14-185937.fits'
 		#~ self.open_file(self.filename)
 
+	@timing
 	def open_file_dialog(self, widget):
 		dialog = Gtk.FileChooserDialog(
 			"Please Choose a File",
@@ -126,20 +152,30 @@ class MyWindow(Gtk.Window):
 			self.filename = dialog.get_filename()
 			self.statusbar.push(0, 'Opened File: ' + self.filename)
 			dialog.destroy()
+			del dialog
 			self.open_file(self.filename)
+
 		elif response == Gtk.ResponseType.CANCEL:
 			dialog.destroy()
+			del dialog
 
 
+	@timing
 	def open_file(self, filename):
 		hdulist = fits.open(filename)
 		self.photon_list = hdulist[1].data
 		hdulist.close()
 
+		 # Init for new file
+		self.orders = []
 		self.science(self.photon_list)
 
 
-	def science(self, photon_list, min_phd=0, max_phd=255):
+	@timing
+	def science(self, photon_list, min_phd=0, max_phd=255, orders=[]):
+		self.recalculate_button.set_sensitive(False)
+		self.min_phd = min_phd
+		self.max_phd = max_phd
 		PHD = np.array(photon_list['PHD'])
 		photon_list_filtered = photon_list[(PHD >= min_phd) & (PHD <= max_phd)]
 		image, xedges, yedges = np.histogram2d(photon_list_filtered['X'], photon_list_filtered['Y'], bins=2048, range=[[0,8192],[0,8192]])
@@ -153,13 +189,19 @@ class MyWindow(Gtk.Window):
 
 	# Smooth peaks by convolving with a boxcar
 		boxcar = np.zeros(300)
-		boxcar[100:199] = 1.0
+		boxcar[125:175] = 1.0
 		smooth = np.convolve(peaks, boxcar, mode='same')
-		self.peaks_smoothed = peaks / smooth
+		#~ self.peaks_smoothed = peaks / smooth
+		self.peaks_smoothed = (peaks/max(peaks)) - (smooth/max(smooth)/2)
 
-	# using scipy.signal.find_peaks_cwt() to find centers of orders.
-	# this required scipy version .11.0 or greater
-		self.orders = signal.find_peaks_cwt(self.peaks_smoothed, np.arange(2, 15))
+	# Only find orders if there are no orders yet, eg. first run
+		if not self.orders and not orders:
+			print 'Finding peaks...'
+			# Requires scipy version .11.0 or greater
+			self.orders = signal.find_peaks_cwt(self.peaks_smoothed, np.arange(10, 20))
+		elif orders:
+			print 'Using premade peaks list...'
+			self.orders = orders
 
 	# Plot 1D data with lines through the centers of the
 	# orders to double check how the peak finder did
@@ -200,16 +242,17 @@ class MyWindow(Gtk.Window):
 
 		self.statusbar.push(0, 'Done! ' + self.filename)
 
-
+	@timing
 	def update_2D_plot(self, image):
 		self.plot_2D.cla()
 		self.plot_2D.tick_params(axis='both', labelsize=7)
 		self.plot_2D.set_title("2D Raw Data")
-		max = np.amax(image)/2
-		self.plot_2D.imshow(image, norm=LogNorm(vmin=1, vmax=max/2), origin='lower')
+		max = np.amax(image)
+
+		self.plot_2D.imshow(image, norm=LogNorm(vmin=0.1, vmax=max/2), origin='lower')
 		self.canvas.draw()
 
-
+	@timing
 	def update_orders_plot(self, peaks, orders):
 		self.plot_orders.cla()
 		self.plot_orders_line, = self.plot_orders.plot([],[])
@@ -218,9 +261,11 @@ class MyWindow(Gtk.Window):
 
 		self.plot_orders_line.set_xdata(peaks)
 		self.plot_orders_line.set_ydata(np.arange(len(peaks)))
-		self.plot_orders.hlines(orders, 0, max(peaks), color='purple', label='centers')
+		self.plot_orders.hlines(orders, min(peaks), max(peaks), color='purple')
+
 		self.plot_orders.relim()
 		self.plot_orders.autoscale_view(True, True, True)
+
 		self.canvas.draw()
 
 
@@ -229,6 +274,7 @@ class MyWindow(Gtk.Window):
 	# resolution to fit.
 	# Maybe do this dynamically based on xlim()?
 	# xmin, xmax = xlim()   # return the current xlim
+	@timing
 	def update_1D_plot(self, spectrum):
 		self.plot_1D.cla()
 		self.plot_1D_line, = self.plot_1D.plot([],[])
@@ -251,10 +297,10 @@ class MyWindow(Gtk.Window):
 		self.plot_1D_line.set_ydata(spectrum)
 		self.plot_1D.relim()
 		self.plot_1D.autoscale_view(True, True, True)
-		self.plot_1D.set_xlabel('pixels')# (x' + str(scale) + ')')
 		self.canvas.draw()
 
 
+	@timing
 	def update_PHD_plot(self, PHD, min_phd, max_phd):
 		self.plot_PHD.cla()
 		self.plot_PHD.set_title('Pulse Height Data')
@@ -325,7 +371,6 @@ class MyWindow(Gtk.Window):
 					self.statusbar.push(data, 'Ready to fit.  Click on both sides of the emission feature you wish to fit')
 					xdata = self.xdata
 					self.gauss_fit(xdata)
-
 
 		#  mouse click event on 1d
 		cid = self.canvas.mpl_connect('button_press_event', onclick)
@@ -431,6 +476,7 @@ class MyWindow(Gtk.Window):
 		return cntrate
 
 
+	@timing
 	def on_filter_phd_button_clicked(self, widget, data):
 		self.phd_window = Gtk.MessageDialog(image = None)
 		self.phd_window.set_size_request(500, 100)
@@ -452,7 +498,7 @@ class MyWindow(Gtk.Window):
 		self.min_phd_entry = Gtk.Entry()
 		self.min_phd_entry.set_activates_default(True)
 		self.max_phd_entry = Gtk.Entry()
-		self.max_phd_entry.set_activates_default(True)
+		#~ self.max_phd_entry.set_activates_default(True)
 
 		self.min_phd_entry.show()
 		self.max_phd_entry.show()
@@ -470,16 +516,20 @@ class MyWindow(Gtk.Window):
 		thebox.show()
 		self.phd_window.show()
 
+	@timing
 	def phd_entry_button_clicked(self, widget):
 		min_phd = int(self.min_phd_entry.get_text())
 		max_phd = int(self.max_phd_entry.get_text())
 		self.phd_window.destroy()
 		self.statusbar.push(0, 'Filtering by: ' + str(min_phd) + ' < PHD < ' + str(max_phd))
+		self.orders = []
 		self.science(self.photon_list, min_phd, max_phd)
 
 
+	@timing
 	def on_add_orders_button_clicked(self, widget, data):
 		if [self.add_orders_button.get_active()] == [True]:
+			self.remove_orders_button.set_sensitive(False)
 			self.statusbar.push(data, 'Click where to add an order.')
 
 			def onclick_peak(event):
@@ -491,22 +541,29 @@ class MyWindow(Gtk.Window):
 		else:
 			self.canvas.mpl_disconnect(self.cid_add)
 			del self.cid_add
+
+			self.remove_orders_button.set_sensitive(True)
 			self.statusbar.push(0, 'Opened File:' + self.filename)
 
+
+	@timing
 	def add_order(self, ydata):
 		order = ydata
 
 		print 'Number of original orders', len(self.orders)
 
-		self.orders.insert(0, order)
-		#~ self.orders.sort() # Don't need to sort yet
+		self.orders.append(order)
+		self.orders.sort()
 		self.update_orders_plot(self.peaks_smoothed, self.orders)
+		self.recalculate_button.set_sensitive(True)
 
 		print 'Corrected number of orders', len(self.orders)
 
 
+	@timing
 	def on_remove_orders_button_clicked(self, widget, data):
 		if [self.remove_orders_button.get_active()] == [True]:
+			self.add_orders_button.set_sensitive(False)
 			self.statusbar.push(data, 'Click on the order to remove.')
 
 			def onclick_order(event):
@@ -518,9 +575,12 @@ class MyWindow(Gtk.Window):
 		else:
 			self.canvas.mpl_disconnect(self.cid_remove)
 			del self.cid_remove
+
+			self.add_orders_button.set_sensitive(True)
 			self.statusbar.push(0, 'Opened File:' + self.filename)
 
 
+	@timing
 	def remove_order(self, ydata):
 		order = min(self.orders, key=lambda x:abs(x - ydata))
 
@@ -528,8 +588,52 @@ class MyWindow(Gtk.Window):
 
 		self.orders.remove(order)
 		self.update_orders_plot(self.peaks_smoothed, self.orders)
+		self.recalculate_button.set_sensitive(True)
 
 		print 'Corrected number of orders', len(self.orders)
+
+
+	def on_recalculate_button_clicked(self, widget, data):
+		self.science(self.photon_list, self.min_phd, self.max_phd)
+
+
+	def on_filemenu_save_clicked(self, widget):
+		now = datetime.datetime.now()
+		date = now.strftime("%Y_%m_%d_%H_%M_%S")
+		temp = self.orders, self.min_phd, self.max_phd
+		pickle.dump(temp, open(self.filename[:-5] + '_1D_' + date + '.orders', 'wb'))
+		self.statusbar.push(0, 'Saved Orders: ' + self.filename[:-5] + '_1D_' + date + '.orders')
+
+
+	def on_filemenu_load_clicked(self, widget):
+		dialog = Gtk.FileChooserDialog(
+			"Please Choose a File",
+			self,
+			Gtk.FileChooserAction.OPEN,
+			(	Gtk.STOCK_CANCEL,
+				Gtk.ResponseType.CANCEL,
+				Gtk.STOCK_OPEN,
+				Gtk.ResponseType.OK ) )
+		dialog.set_default_response(Gtk.ResponseType.OK)
+		filter = Gtk.FileFilter()
+		filter.set_name('orders	Files')
+		filter.add_mime_type('orders')
+		filter.add_pattern('*.orders')
+		dialog.add_filter(filter)
+
+		response = dialog.run()
+
+		if response == Gtk.ResponseType.OK :
+			filename = dialog.get_filename()
+			self.statusbar.push(0, 'Loaded Orders: ' + filename)
+			dialog.destroy()
+			del dialog
+			orders, min_phd, max_phd = pickle.load(open(filename, 'rb'))
+			self.science(self.photon_list, min_phd, max_phd, orders)
+
+		elif response == Gtk.ResponseType.CANCEL:
+			dialog.destroy()
+			del dialog
 
 
 if __name__ == '__main__':
@@ -537,3 +641,4 @@ if __name__ == '__main__':
 	win.connect("delete-event", Gtk.main_quit)
 	win.show_all()
 	Gtk.main()
+
