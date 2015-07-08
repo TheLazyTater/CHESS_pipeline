@@ -40,6 +40,8 @@ class MyWindow(Gtk.Window):
 
 		self.set_default_size(1000, 800)
 		self.figure = Figure(figsize=(5,7), dpi=100)
+		self.x = []
+		self.odo = []
 		self.plot_1D = self.figure.add_subplot(212)
 		self.plot_2D = self.figure.add_subplot(232)
 		self.plot_PHD = self.figure.add_subplot(231)
@@ -286,11 +288,11 @@ class MyWindow(Gtk.Window):
 		MAX = 18980 #16384 # 2^14
 		scale = int(len(spectrum)/MAX) + 1
 
-		print len(spectrum), scale, len(spectrum)/scale
-
 		# When we get wavelength calibration, change this line to
 		#~ x = np.linspace(minWL, maxWL, num = len(spectrum)/scale)
 		x = np.arange(0, len(spectrum), scale)
+		self.x = np.linspace(0, len(spectrum), len(spectrum))
+		self.odo = spectrum
 		spectrum = [np.sum(spectrum[i:i+scale]) for i in x]
 
 		self.plot_1D_line.set_xdata(x)
@@ -375,33 +377,37 @@ class MyWindow(Gtk.Window):
 		#  mouse click event on 1d
 		cid = self.canvas.mpl_connect('button_press_event', onclick)
 		if [self.gauss_fit_button.get_active()] == [False]:
-			self.statusbar.push(0, 'Opened File:' + File)
-
+			self.statusbar.push(0, 'Opened File')
 
 ### gauss fitting ###
 	def gauss_fit(self, xdata):
 
+                #Call x and y values from 1D plot
 		x = list(self.x)
+		y = list(self.odo)
+		#Initialize list of bound values
 		xg = []
+		#Propagate list based on both click bounds
 		xg.append(int(xdata[0]))
 		xg.append(int(xdata[1]))
+		#Identify bound positions, high or low
 		xg1 = min(xg)
 		xg2 = max(xg)
+		#Use bounds to pull relevent x and y values from raw data 
 		xgauss = x[xg1:xg2]
-		ygauss = self.odo[xg1:xg2]
-		right = ygauss[len(xgauss)-4:len(xgauss)]
-		left = ygauss[0:4]
+		ygauss = y[xg1:xg2]
 
-	# background subtraction
+		####Rudimentary line of best fit###
+		right = ygauss[len(ygauss)/2:len(ygauss)]
+		left = ygauss[0:len(ygauss)/2]
 		averight = sum(right) / len(right)
 		aveleft = sum(left) / len(left)
 		bg_y = [averight, aveleft]
-		rightx = xgauss[len(xgauss)-4:len(xgauss)]
-		leftx = xgauss[0:4]
+		rightx = xgauss[len(xgauss)/2:len(xgauss)]
+		leftx = xgauss[0:len(xgauss)/2]
 		averightx = sum(rightx) / len(rightx)
 		aveleftx = sum(leftx) / len(leftx)
 		bg_x = [averightx, aveleftx]
-
 		m,b = np.polyfit(bg_x, bg_y, 1)
 		slopex = [i * m for i in xgauss]
 		bg_fit = slopex + b
@@ -416,13 +422,13 @@ class MyWindow(Gtk.Window):
 		guess = [1.0, avex, 1.0]
 
 		# plugging in model to matplotlibs curve_fit()
-		coeff, var_matrix = curve_fit(gauss, xgauss, ygauss-bg_fit, p0=guess)
+		coeff, var_matrix = curve_fit(gauss, xgauss, ygauss, p0=guess)
 		fit = gauss(xgauss, *coeff)
 		sigma = coeff[2]
 		FWHM = sigma * 2 * np.sqrt(2 * np.log(2))
 		FWHM = round(FWHM, 2)
 		fitplot = plt.plot(xgauss, ygauss, color='k')
-		plt.plot(xgauss, fit + bg_fit, color='b', linewidth=1.5)
+		plt.plot(xgauss, fit, color='b', linewidth=2)
 		xpos = xgauss[0] + 0.01 * (coeff[1] - xgauss[0])
 		strFWHM = str(FWHM)
 		plt.text(xpos, 0.9 * max(ygauss), 'FWHM = ' + strFWHM + '', color='purple', fontweight='bold')
